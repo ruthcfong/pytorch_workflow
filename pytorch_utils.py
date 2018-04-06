@@ -71,7 +71,7 @@ def set_gpu(gpu=None):
         else:
             gpu_params = str(gpu)
     os.environ['CUDA_VISIBLE_DEVICES'] = gpu_params
-    print("%d GPUs being used: %s" % (torch.cuda.device_count(), gpu_params))
+    print("%d GPU(s) being used at the following index(es): %s" % (torch.cuda.device_count(), gpu_params))
     return cuda
 
 
@@ -149,25 +149,50 @@ def get_detransform(mu=IMAGENET_MU, sigma=IMAGENET_SIGMA):
     return detransform
 
 
-def get_model(network, pretrained=True, cuda=False):
-    if network == 'mnist' or network == 'lenet':
-        if network == 'mnist':
-            from mnist_net import MnistNet
-            model = MnistNet()
-            model_path = 'mnist_model.pth.tar'
-        else:
-            from mnist_net import LeNet
-            model = LeNet()
-            model_path = 'lenet_model.pth.tar'
+def get_model(arch, pretrained=True, cuda=False):
+    """Returns a Pytorch model of the given architecture.
+
+    TODO: Improve documentation for this function.
+
+    Args:
+        arch (str): Name of architecture (i.e., "alexnet", "vgg19", etc.).
+        pretrained (bool): True if the returned model should use pretrained weights; False otherwise.
+        cuda (bool): True if the returned model should be loaded onto available gpu(s); False otherwise.
+
+    Returns:
+        A Pytorch model.
+    """
+    if arch == 'lenet':
+        from architectures import LeNet
+        model = LeNet()
+        model_path = os.path.join(BASE_PATH, 'models', 'lenet_model.pth.tar')
+        assert(os.path.exists(model_path))
         if pretrained:
-            checkpoint = torch.load(model_path)
+            # load checkpoint originally trained using a GPU into the CPU
+            # (see https://discuss.pytorch.org/t/on-a-cpu-device-how-to-load-checkpoint-saved-on-gpu-device/349/3)
+            checkpoint = torch.load(model_path, 
+                    map_location=lambda storage, loc: storage)
             model.load_state_dict(checkpoint['model'])
     else:
-        model = models.__dict__[network](pretrained=pretrained)
+        model = models.__dict__[arch](pretrained=pretrained)
     model.eval()
     if cuda:
         model.cuda()
     return model
+
+
+def get_num_params(model):
+    """Returns the number of parameters in a Pytorch model.
+
+    Args:
+        model: A Pytorch model.
+    
+    Return:
+        int: number of parameters in the given Pytorch model.
+    """
+    model_params = filter(lambda p: p.requires_grad, model.parameters())
+    num_params = sum(np.prod(p.size()) for p in model_params)
+    return num_params
 
 
 def get_pytorch_module(net, blob):
