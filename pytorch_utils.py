@@ -20,6 +20,7 @@ from collections import OrderedDict
 IMAGENET_MU = [0.485, 0.456, 0.406]
 IMAGENET_SIGMA = [0.229, 0.224, 0.225]
 
+BASE_PATH = "/home/ruthfong/pytorch-workflow"
 
 class Clip(object):
     """Pytorch transformation that clips a tensor to be within [0,1]"""
@@ -41,7 +42,7 @@ class Clip(object):
 
 
 def get_short_imagenet_name(label_i, 
-        label_names=np.loadtxt('synset_words.txt', str, delimiter='\t')):
+        label_names=np.loadtxt(os.path.join(BASE_PATH, 'synset_words.txt'), str, delimiter='\t')):
     """Return the shortened name for an ImageNet index (zero-indexed).
     
     Args:
