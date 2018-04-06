@@ -4,9 +4,9 @@ import torch
 
 import torch.nn as nn
 from torch.autograd import Variable
+from torch.utils.data import DataLoader
 
-from torchvision import transforms
-from torchvision import models
+from torchvision import datasets, models, transforms
 
 import numpy as np
 import copy
@@ -17,10 +17,11 @@ import warnings
 
 from collections import OrderedDict 
 
+from custom import *
+
 IMAGENET_MU = [0.485, 0.456, 0.406]
 IMAGENET_SIGMA = [0.229, 0.224, 0.225]
 
-BASE_PATH = "/home/ruthfong/pytorch-workflow"
 
 class Clip(object):
     """Pytorch transformation that clips a tensor to be within [0,1]"""
@@ -42,7 +43,7 @@ class Clip(object):
 
 
 def get_short_imagenet_name(label_i, 
-        label_names=np.loadtxt(os.path.join(BASE_PATH, 'synset_words.txt'), str, delimiter='\t')):
+        label_names=np.loadtxt(os.path.join(BASE_REPO_PATH, 'synset_words.txt'), str, delimiter='\t')):
     """Return the shortened name for an ImageNet index (zero-indexed).
     
     Args:
@@ -165,7 +166,7 @@ def get_model(arch, pretrained=True, cuda=False):
     if arch == 'lenet':
         from architectures import LeNet
         model = LeNet()
-        model_path = os.path.join(BASE_PATH, 'models', 'lenet_model.pth.tar')
+        model_path = os.path.join(BASE_REPO_PATH, 'models', 'lenet_model.pth.tar')
         assert(os.path.exists(model_path))
         if pretrained:
             # load checkpoint originally trained using a GPU into the CPU
@@ -371,3 +372,22 @@ def hook_get_shapes(model, blobs, input, clone=True):
 
     return shapes_res
 
+
+def get_data_loader(dataset, **kwargs):
+    if dataset == 'mnist':
+        return get_mnist_data_loader(**kwargs)
+    else:
+        raise NotImplementedError
+
+
+def get_mnist_data_loader(train=True, batch_size=64, shuffle=False, normalize=False):
+    if normalize:
+        transform = transforms.Compose([transforms.ToTensor(), 
+                                        transforms.Normalize((0.1307,), (0.3081,))
+                                       ])
+    else:
+        transform = transforms.Compose([transforms.ToTensor()])
+    dataset = datasets.MNIST(MNIST_DATA_PATH, train=train,
+        download=not os.path.exists(MNIST_DATA_PATH), 
+        transform=transform)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
