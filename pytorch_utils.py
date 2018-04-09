@@ -82,11 +82,11 @@ def pil_loader(path):
         return img.convert('RGB')
 
 
-def get_input_size(dataset='imagenet', network='alexnet'):
+def get_input_size(dataset='imagenet', arch='alexnet'):
     if dataset == 'imagenet':
-        if network == 'alexnet':
+        if arch == 'alexnet':
             return [1,3,227,227]
-        elif network == 'inception_v3':
+        elif arch == 'inception_v3':
             return [1,3,299,299]
         else:
             return [1,3,224,224]
@@ -96,31 +96,18 @@ def get_input_size(dataset='imagenet', network='alexnet'):
         assert(False)
 
 
-def get_transform_detransform(dataset='imagenet'):
+def get_transform_detransform(dataset='imagenet', size=224, train=False):
     if dataset == 'mnist':
         return (transforms.Compose([transforms.Grayscale(), transforms.ToTensor()]), 
                 transforms.Compose([transforms.ToPILImage()]))
                 #transforms.Compose([Clip(), transforms.ToPILImage()]))
     elif dataset == 'imagenet':
-        mu = [0.485, 0.456, 0.406]
-        sigma = [0.229, 0.224, 0.225]
-
-        transform = transforms.Compose([
-            #transforms.Scale(size=size),
-            #transforms.CenterCrop(size=size),
-            transforms.ToTensor(),
-            transforms.Normalize(mu, sigma),
-        ])
-
-        detransform = transforms.Compose([
-            Denormalize(mu, sigma),
-            Clip(),
-            transforms.ToPILImage(),
-        ])
-
+        transform = get_transform(size=size, mu=IMAGENET_MU, 
+                sigma=IMAGENET_SIGMA, train=train)
+        detransform = get_detransform(mu=IMAGENET_MU, sigma=IMAGENET_SIGMA)
         return (transform, detransform)
     else:
-        asesrt(False)
+        assert(False)
 
 
 def get_transform(size=224, mu=IMAGENET_MU, sigma=IMAGENET_SIGMA, train=False):
@@ -283,6 +270,18 @@ def truncate_module(parent_module, module_path):
         assert(False)
 
 
+def get_first_module_name(module, running_name=''):
+    if module._modules:
+        next_module_name = list(module._modules)[0]
+        if running_name == '':
+            running_name = next_module_name
+        else:
+            running_name = running_name + '.' + next_module_name
+        return get_first_module_name(module._modules[next_module_name],
+                running_name=running_name)
+    return running_name
+
+
 activations = []
 
 def hook_acts(module, input, output):
@@ -298,6 +297,20 @@ def get_acts(model, input, clone=True):
         return [a.clone() for a in activations]
     else:
         return activations
+
+gradients = []
+
+def hook_grads(module, grad_input, grad_output):
+    gradients.append(grad_input)
+
+
+def get_grads(model, input, clone=True):
+    del gradients[:]
+    _ = model(input)
+    if clone:
+        return [g.clone() for g in gradients]
+    else:
+        return gradients
 
 
 shapes = []
@@ -358,6 +371,19 @@ def hook_get_acts(model, blobs, input, features=None, quantile=None, threshold=N
         h.remove()
 
     return acts_res
+
+
+def hook_get_grads(model, blobs, input, clone=True):
+    hooks = []
+    for i in range(len(blobs)):
+        hooks.append(get_pytorch_module(model, blobs[i]).register_backward_hook(hook_grads))
+
+    grads_res = [a for a in get_acts(model, input, clone=clone)]
+
+    for h in hooks:
+        h.remove()
+
+    return grads_res
 
 
 def hook_get_shapes(model, blobs, input, clone=True):
