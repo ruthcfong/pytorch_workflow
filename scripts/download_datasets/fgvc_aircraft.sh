@@ -1,7 +1,9 @@
-!/bin/bash
+#!/bin/bash
+#Dataset website: http://www.robots.ox.ac.uk/~vgg/data/fgvc-aircraft
 
-DOWNLOAD_DIR=/home/ruthfong/datasets
+DOWNLOAD_DIR=/data/datasets
 
+mkdir -p $DOWNLOAD_DIR
 cd $DOWNLOAD_DIR
 
 # download data

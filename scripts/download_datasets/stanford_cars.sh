@@ -1,6 +1,7 @@
-!/bin/bash
+#!/bin/bash
+#Dataset website: https://ai.stanford.edu/~jkrause/cars/car_dataset.html
 
-DOWNLOAD_DIR=/home/ruthfong/datasets/cars
+DOWNLOAD_DIR=/data/datasets/cars
 
 # make directory (and intermediary directories) if it doesn't exist
 mkdir -p $DOWNLOAD_DIR

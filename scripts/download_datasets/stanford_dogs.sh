@@ -1,7 +1,7 @@
 #!/bin/bash
 #Dataset website: http://vision.stanford.edu/aditya86/ImageNetDogs/
 
-DOWNLOAD_DIR="/home/ruthfong/datasets/dogs"
+DOWNLOAD_DIR="/data/datasets/dogs"
 
 mkdir -p $DOWNLOAD_DIR
 cd $DOWNLOAD_DIR
@@ -19,9 +19,4 @@ tar -xvf lists.tar
 rm lists.tar
 
 wget http://vision.stanford.edu/aditya86/ImageNetDogs/train_data.mat
-tar -xvf train_data.mat
-rm train_data.mat
-
 wget http://vision.stanford.edu/aditya86/ImageNetDogs/test_data.mat
-tar -xvf test_data.mat
-rm test_data.mat

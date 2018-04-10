@@ -1,7 +1,7 @@
 #!/bin/bash
 #Dataset webpage: http://www.vision.caltech.edu/visipedia-data/CUB-200-2011/CUB_200_2011.tgz
 
-DOWNLOAD_DIR="/home/ruthfong/datasets/cub"
+DOWNLOAD_DIR="/data/datasets/cub"
 
 mkdir -p $DOWNLOAD_DIR
 cd $DOWNLOAD_DIR
