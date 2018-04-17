@@ -13,6 +13,10 @@ import copy
 
 from PIL import Image 
 
+from architectures import LeNet, MnistNet, AlexNetCustom, alexnet_custom
+
+#import matplotlib.pyplot as plt
+
 import warnings
 
 from collections import OrderedDict 
@@ -22,6 +26,13 @@ from custom import *
 IMAGENET_MU = [0.485, 0.456, 0.406]
 IMAGENET_SIGMA = [0.229, 0.224, 0.225]
 
+CIFAR_MU = [0.4914, 0.4822, 0.4465]
+CIFAR_SIGMA = [0.2023, 0.1994, 0.2010]
+
+AIRCRAFT_MU = [0.4812, 0.5122, 0.5356]
+AIRCRAFT_SIGMA = [0.2187, 0.2118, 0.2441]
+
+CIFAR10_CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 
 class Clip(object):
     """Pytorch transformation that clips a tensor to be within [0,1]"""
@@ -40,6 +51,10 @@ class Clip(object):
         t[t > 1] = 1
         t[t < 0] = 0
         return t
+
+
+def get_cifar10_class_name(label_i):
+    return CIFAR10_CLASSES[label_i]
 
 
 def get_short_imagenet_name(label_i, 
@@ -92,7 +107,10 @@ def get_input_size(dataset='imagenet', arch='alexnet'):
             return [1,3,224,224]
     elif dataset == 'mnist':
         return [1,1,28,28]
+    elif dataset == 'cifar10' or dataset == 'cifar100':
+        return [1,3,32,32]
     else:
+        raise NotImplementedError
         assert(False)
 
 
@@ -101,6 +119,22 @@ def get_transform_detransform(dataset='imagenet', size=224, train=False):
         return (transforms.Compose([transforms.Grayscale(), transforms.ToTensor()]), 
                 transforms.Compose([transforms.ToPILImage()]))
                 #transforms.Compose([Clip(), transforms.ToPILImage()]))
+    elif dataset == 'cifar10' or dataset == 'cifar100':
+        assert(size == 32)
+        if train:
+            transform = transforms.Compose([
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(CIFAR_MU, CIFAR_SIGMA)
+            ])
+        else:
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(CIFAR_MU, CIFAR_SIGMA)
+            ])
+        detransform = get_detransform(mu=CIFAR_MU, sigma=CIFAR_SIGMA)
+        return (transform, detransform)
     elif dataset == 'imagenet':
         transform = get_transform(size=size, mu=IMAGENET_MU, 
                 sigma=IMAGENET_SIGMA, train=train)
@@ -137,7 +171,8 @@ def get_detransform(mu=IMAGENET_MU, sigma=IMAGENET_SIGMA):
     return detransform
 
 
-def get_model(arch, pretrained=True, cuda=False):
+def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True, 
+        checkpoint_path=None, cuda=False, **kwargs):
     """Returns a Pytorch model of the given architecture.
 
     TODO: Improve documentation for this function.
@@ -150,20 +185,65 @@ def get_model(arch, pretrained=True, cuda=False):
     Returns:
         A Pytorch model.
     """
-    if arch == 'lenet':
-        from architectures import LeNet
-        model = LeNet()
-        model_path = os.path.join(BASE_REPO_PATH, 'models', 'lenet_model.pth.tar')
-        assert(os.path.exists(model_path))
-        if pretrained:
-            # load checkpoint originally trained using a GPU into the CPU
-            # (see https://discuss.pytorch.org/t/on-a-cpu-device-how-to-load-checkpoint-saved-on-gpu-device/349/3)
-            checkpoint = torch.load(model_path, 
-                    map_location=lambda storage, loc: storage)
-            model.load_state_dict(checkpoint['model'])
+    if dataset == 'mnist' or dataset == 'svhn':
+        in_channels = 1 if dataset == 'mnist' else 3
+        if arch == 'lenet':
+            model = LeNet(in_channels=in_channels, adaptive_pool=adaptive_pool)
+            model_path = os.path.join(BASE_REPO_PATH, 'models', 'lenet_model.pth.tar')
+            assert(os.path.exists(model_path))
+            if pretrained and checkpoint_path is None:
+                assert(dataset == 'mnist')
+                # load checkpoint originally trained using a GPU into the CPU
+                # (see https://discuss.pytorch.org/t/on-a-cpu-device-how-to-load-checkpoint-saved-on-gpu-device/349/3)
+                checkpoint = torch.load(model_path, 
+                        map_location=lambda storage, loc: storage)
+                model.load_state_dict(checkpoint['model'])
+        elif arch == 'mnistnet':
+            model = MnistNet(in_channels=in_channels)
+            assert(not pretrained)
+        elif arch == 'alexnet_custom':
+            model = alexnet_custom(pretrained=pretrained, **kwargs)
+        else:
+            raise NotImplementedError
+    elif dataset == 'cifar10' or dataset == 'cifar100':
+        # requires pytorch-classification
+        import models.cifar as cifar_models
+
+        # architectures for which I have pretrained CIFAR-10/CIFAR-100 models
+        CIFAR_ARCHS = ('alexnet_custom', 'alexnet', 'densenet', 'preresnet-110', 'resnet-110', 'vgg19_bn')
+
+        if arch not in CIFAR_ARCHS:
+            raise ValueError('Architecture "{}" for {} not found. Valid architectures are: {}'.format(
+                             arch, dataset, ', '.join(CIFAR_ARCHS)))
+        if arch == 'alexnet_custom':
+            model = alexnet_custom(pretrained=pretrained, **kwargs)
+        model = cifar_models.__dict__[arch](pretrained=pretrained, dataset=dataset) 
+    elif dataset == 'imagenet':
+        if arch == 'alexnet_custom':
+            model = alexnet_custom(pretrained=pretrained, **kwargs)
+        else:
+            model = models.__dict__[arch](pretrained=pretrained)
+            if adaptive_pool:
+                if arch == 'alexnet' or 'vgg' in arch:
+                    module_name = 'features.%d' % (len(model.features)-1)
+                    if arch == 'alexnet':
+                        output_size = (6,6)
+                    else:
+                        output_size = (7,7)
+                elif 'resnet' in arch:
+                    s = model.fc.in_features / 512
+                    assert(s == 1 or s == 4)
+                    output_size = (s,s)
+                else:
+                    raise NotImplementedError
+                model = replace_module(model, module_name.split('.'), nn.AdaptiveMaxPool2d(output_size))
     else:
-        model = models.__dict__[arch](pretrained=pretrained)
+        raise NotImplementedError
     model.eval()
+    if checkpoint_path is not None:
+        checkpoint = torch.load(checkpoint_path,
+                map_location=lambda storage, loc: storage)
+        model.load_state_dict(checkpoint['state_dict'])
     if cuda:
         model.cuda()
     return model
@@ -402,18 +482,96 @@ def hook_get_shapes(model, blobs, input, clone=True):
 def get_data_loader(dataset, **kwargs):
     if dataset == 'mnist':
         return get_mnist_data_loader(**kwargs)
+    elif dataset == 'cifar10':
+        return get_cifar10_data_loader(**kwargs)
+    elif dataset == 'cifar100':
+        return get_cifar100_data_loader(**kwargs)
     else:
         raise NotImplementedError
 
 
-def get_mnist_data_loader(train=True, batch_size=64, shuffle=False, normalize=False):
+def get_cifar10_data_loader(datadir=CIFAR10_DATA_DIR, train=True, batch_size=64,
+                            shuffle=False, cuda=False):
+    transform, _ = get_transform_detransform(dataset='cifar10', size=32)
+    dataset = datasets.CIFAR10(datadir, train=train, 
+                               download=not os.path.exists(datadir),
+                               transform=transform)
+    kwargs = {'num_workers': 1, 'pin_memory': True} if cuda else {}
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, **kwargs)
+
+
+def get_cifar100_data_loader(datadir=CIFAR100_DATA_DIR, train=True, batch_size=64,
+                            shuffle=False, cuda=False):
+    transform, _ = get_transform_detransform(dataset='cifar100', size=32)
+    dataset = datasets.CIFAR10(datadir, train=train, 
+                               download=not os.path.exists(datadir),
+                               transform=transform)
+    kwargs = {'num_workers': 1, 'pin_memory': True} if cuda else {}
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, **kwargs)
+
+
+def get_mnist_data_loader(datadir=MNIST_DATA_DIR, train=True, batch_size=64, 
+                          shuffle=False, normalize=False, cuda=False):
     if normalize:
         transform = transforms.Compose([transforms.ToTensor(), 
                                         transforms.Normalize((0.1307,), (0.3081,))
                                        ])
     else:
         transform = transforms.Compose([transforms.ToTensor()])
-    dataset = datasets.MNIST(MNIST_DATA_PATH, train=train,
-        download=not os.path.exists(MNIST_DATA_PATH), 
+    dataset = datasets.MNIST(datadir, train=train,
+        download=not os.path.exists(datadir), 
         transform=transform)
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+    kwargs = {'num_workers': 1, 'pin_memory': True} if cuda else {}
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, **kwargs)
+
+
+def save_checkpoint(state, filename):
+    directory = os.path.dirname(filename)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    torch.save(state, filename)
+    print('Saved model state dict at %s.' % filename)
+
+
+def accuracy(output, target, topk=(1,)):
+    """Computes the precision@k for the specified values of k"""
+    maxk = max(topk)
+    batch_size = target.size(0)
+
+    _, pred = output.topk(maxk, 1, True, True)
+    pred = pred.t()
+    correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+    res = []
+    for k in topk:
+        correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+        res.append(correct_k.mul_(100.0 / batch_size).data.cpu().numpy()[0])
+    return res
+
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+
+def show_image(img, title='', hide_ticks=True):
+    f, ax = plt.subplots(1,1)
+    ax.imshow(img)
+    ax.set_title(title)
+    if hide_ticks:
+        ax.set_xticks([])
+        ax.set_yticks([])
+    plt.show()
