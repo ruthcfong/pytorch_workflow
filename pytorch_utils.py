@@ -218,7 +218,8 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
         if arch == 'alexnet_custom':
             model = alexnet_custom(pretrained=pretrained, **kwargs)
         model = cifar_models.__dict__[arch](pretrained=pretrained, dataset=dataset) 
-    elif dataset == 'imagenet':
+    #elif dataset == 'imagenet':
+    else:
         if arch == 'alexnet_custom':
             model = alexnet_custom(pretrained=pretrained, **kwargs)
         else:
@@ -237,8 +238,8 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
                 else:
                     raise NotImplementedError
                 model = replace_module(model, module_name.split('.'), nn.AdaptiveMaxPool2d(output_size))
-    else:
-        raise NotImplementedError
+    #else:
+    #    raise NotImplementedError
     model.eval()
     if checkpoint_path is not None:
         checkpoint = torch.load(checkpoint_path,
