@@ -210,14 +210,18 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
         import models.cifar as cifar_models
 
         # architectures for which I have pretrained CIFAR-10/CIFAR-100 models
-        CIFAR_ARCHS = ('alexnet_custom', 'alexnet', 'densenet', 'preresnet-110', 'resnet-110', 'vgg19_bn')
+        CIFAR_ARCHS = ('alexnet_custom', 'lenet', 'alexnet', 'densenet', 'preresnet-110', 'resnet-110', 'vgg19_bn')
 
         if arch not in CIFAR_ARCHS:
             raise ValueError('Architecture "{}" for {} not found. Valid architectures are: {}'.format(
                              arch, dataset, ', '.join(CIFAR_ARCHS)))
         if arch == 'alexnet_custom':
             model = alexnet_custom(pretrained=pretrained, **kwargs)
-        model = cifar_models.__dict__[arch](pretrained=pretrained, dataset=dataset) 
+        elif arch == 'lenet':
+            model = LeNet(in_channels=3, adaptive_pool=adaptive_pool)
+            assert(pretrained is False or checkpoint_path is not None)
+        else:
+            model = cifar_models.__dict__[arch](pretrained=pretrained, dataset=dataset) 
     #elif dataset == 'imagenet':
     else:
         if arch == 'alexnet_custom':
@@ -467,12 +471,15 @@ def hook_get_grads(model, blobs, input, clone=True):
     return grads_res
 
 
-def hook_get_shapes(model, blobs, input, clone=True):
+def hook_get_shapes(model, blobs, input, features=None, clone=True):
     hooks = []
     for i in range(len(blobs)):
         hooks.append(get_pytorch_module(model, blobs[i]).register_forward_hook(hook_shapes))
 
     shapes_res = get_shapes(model, input, clone=clone)
+    if features is not None:
+        assert(len(blobs) == 1)
+        shapes_res[0][1] = len(features)
 
     for h in hooks:
         h.remove()
