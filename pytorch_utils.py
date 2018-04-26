@@ -1,8 +1,9 @@
 import os
 
 import torch
-
 import torch.nn as nn
+import torch.nn.functional as F
+
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
@@ -33,6 +34,41 @@ AIRCRAFT_MU = [0.4812, 0.5122, 0.5356]
 AIRCRAFT_SIGMA = [0.2187, 0.2118, 0.2441]
 
 CIFAR10_CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+
+
+"""class NormalizedMSELoss(nn.Module):
+    def __init__(self, size_average=True, reduce=True):
+        super(NormalizedMSELoss, self).__init__()
+        self.size_average = size_average
+        self.reduce = reduce
+
+    def forward(self, input, target):
+        unnorm_loss = F.mse_loss(input, target, reduce=False)
+        norm_loss = unnorm_loss / torch.abs(target + 1e-20)
+        if not self.reduce:
+            return norm_loss
+        else:
+            if self.size_average:
+                return torch.mean(norm_loss)
+            else:
+                return torch.sum(norm_loss)
+"""
+class NormalizedMSELoss(nn.Module):
+    def __init__(self, size_average=True, reduce=True):
+        super(NormalizedMSELoss, self).__init__()
+        self.size_average = size_average
+        self.reduce = reduce
+
+    def forward(self, input, target):
+        loss = F.mse_loss(input / torch.norm(input), target / torch.norm(target), reduce=False)
+        if not self.reduce:
+            return loss 
+        else:
+            if self.size_average:
+                return torch.mean(torch.sum(loss.view(loss.shape[0], -1)))
+            else:
+                return torch.sum(norm_loss)
+        
 
 class Clip(object):
     """Pytorch transformation that clips a tensor to be within [0,1]"""
