@@ -65,9 +65,11 @@ class NormalizedMSELoss(nn.Module):
     def forward(self, input, target):
         norm_input = torch.norm(input.view(input.shape[0], -1), p=2, dim=1)
         norm_target = torch.norm(target.view(target.shape[0], -1), p=2, dim=1)
-        while len(norm_input.shape) < len(norm_input.shape):
+        while len(norm_input.shape) < len(input.shape):
             norm_input.unsqueeze_(-1)
-            norm_target.unsqueeze(-1)
+            norm_target.unsqueeze_(-1)
+        norm_input = norm_input.expand_as(input)
+        norm_target = norm_target.expand_as(target)
         loss = F.mse_loss(input / norm_input, target / norm_target, reduce=False)
         if not self.reduce:
             return loss 
