@@ -36,7 +36,8 @@ AIRCRAFT_SIGMA = [0.2187, 0.2118, 0.2441]
 CIFAR10_CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 
 
-"""class NormalizedMSELoss(nn.Module):
+"""
+class NormalizedMSELoss(nn.Module):
     def __init__(self, size_average=True, reduce=True):
         super(NormalizedMSELoss, self).__init__()
         self.size_average = size_average
@@ -53,6 +54,8 @@ CIFAR10_CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog
             else:
                 return torch.sum(norm_loss)
 """
+
+
 class NormalizedMSELoss(nn.Module):
     def __init__(self, size_average=True, reduce=True):
         super(NormalizedMSELoss, self).__init__()
@@ -60,7 +63,12 @@ class NormalizedMSELoss(nn.Module):
         self.reduce = reduce
 
     def forward(self, input, target):
-        loss = F.mse_loss(input / torch.norm(input), target / torch.norm(target), reduce=False)
+        norm_input = torch.norm(input.view(input.shape[0], -1), p=2, dim=1)
+        norm_target = torch.norm(target.view(target.shape[0], -1), p=2, dim=1)
+        while len(norm_input.shape) < len(norm_input.shape):
+            norm_input.unsqueeze_(-1)
+            norm_target.unsqueeze(-1)
+        loss = F.mse_loss(input / norm_input, target / norm_target, reduce=False)
         if not self.reduce:
             return loss 
         else:
