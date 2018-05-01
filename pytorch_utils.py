@@ -10,6 +10,9 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, models, transforms
 
 import numpy as np
+
+from sklearn.externals import joblib
+
 import copy
 
 from PIL import Image 
@@ -54,6 +57,66 @@ class NormalizedMSELoss(nn.Module):
             else:
                 return torch.sum(norm_loss)
 """
+
+class GramMatrix(nn.Module):
+    def __init__(self):
+        super(GramMatrix, self).__init__()
+
+    def forward(self, input):
+        features = input.view(input.shape[0], input.shape[1], -1)
+        gram_matrix = torch.bmm(features, features.transpose(1,2))
+        return gram_matrix
+
+
+class DiversityLoss(nn.Module):
+    def __init__(self, size_average=True, use_gram=True, reduce=True):
+        super(DiversityLoss, self).__init__()
+        self.use_gram = use_gram
+        if use_gram:
+            self.gm = GramMatrix()
+        self.size_average = size_average
+        self.reduce = reduce
+
+    def forward(self, input):
+        if self.use_gram:
+            mats = [self.gm(x) for x in input] 
+        else:
+            mats = [x.view(x.shape[0], -1) for x in input]
+        res = 0
+        count = 0
+        for a in range(len(input)):
+            for b in range(len(input)):
+                if a != b:
+                    norm_a = torch.norm(mats[a].view(mats[a].shape[0], -1), dim=1).unsqueeze(-1).unsqueeze(-1).expand_as(mats[a])
+                    norm_b = torch.norm(mats[b].view(mats[b].shape[0], -1), dim=1).unsqueeze(-1).unsqueeze(-1).expand_as(mats[b])
+                    res = res + (mats[a] * mats[b]) / (norm_a * norm_b)
+                    count += 1
+        res = res / count
+        if not self.reduce:
+            return res
+        if self.size_average:
+            return torch.mean(res)
+        else:
+            return torch.sum(res)
+
+
+class ContrastiveLoss(torch.nn.Module):
+    """
+    Contrastive loss function.
+    Based on: http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
+    """
+
+    def __init__(self, margin=2.0):
+        super(ContrastiveLoss, self).__init__()
+        self.margin = margin
+
+    def forward(self, output1, output2, label):
+        euclidean_distance = F.pairwise_distance(output1, output2)
+        loss_contrastive = torch.mean((1-label) * torch.pow(euclidean_distance, 2) +
+                                      (label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2))
+
+
+        return loss_contrastive
 
 
 class NormalizedMSELoss(nn.Module):
@@ -234,7 +297,18 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
     if dataset == 'mnist' or dataset == 'svhn':
         in_channels = 1 if dataset == 'mnist' else 3
         if arch == 'lenet':
-            model = LeNet(in_channels=in_channels, adaptive_pool=adaptive_pool)
+            if 'in_channels' in kwargs:
+                in_channels = kwargs['in_channels']
+            if 'activation' in kwargs:
+                activation = kwargs['activation']
+            else:
+                activation = True
+            if 'num_classes' in kwargs: 
+                out_channels = kwargs['num_classes']
+            else:
+                out_channels = 10
+            model = LeNet(in_channels=in_channels, out_channels=out_channels, 
+                          activation=activation, adaptive_pool=adaptive_pool)
             model_path = os.path.join(BASE_REPO_PATH, 'models', 'lenet_model.pth.tar')
             assert(os.path.exists(model_path))
             if pretrained and checkpoint_path is None:
@@ -419,11 +493,15 @@ def hook_acts(module, input, output):
     activations.append(output)
 
 
-def get_acts(model, input, clone=True):
+
+def get_acts(model, input, second_input=None, clone=True):
     del activations[:]
     #if next(model.parameters()).is_cuda and not input.is_cuda:
     #    input = input.cuda()
-    _ = model(input)
+    if second_input is not None:
+        _ = model(input, second_input)
+    else:
+        _ = model(input)
     if clone:
         return [a.clone() for a in activations]
     else:
@@ -472,12 +550,12 @@ class Step(nn.Module):
        return self.max_threshold(-1*self.min_threshold(x))
 
 
-def hook_get_acts(model, blobs, input, features=None, quantile=None, threshold=None, clone=True):
+def hook_get_acts(model, blobs, input, second_input=None, features=None, quantile=None, threshold=None, clone=True):
     hooks = []
     for i in range(len(blobs)):
         hooks.append(get_pytorch_module(model, blobs[i]).register_forward_hook(hook_acts))
 
-    acts_res = [a for a in get_acts(model, input, clone=clone)]
+    acts_res = [a for a in get_acts(model, input, second_input=second_input, clone=clone)]
     #acts_res = [a.detach() for a in get_acts(model, input, clone=clone)]
     if quantile is not None:
         quantile = torch.from_numpy(quantile).type(type(acts_res[0].data))
@@ -531,6 +609,55 @@ def hook_get_shapes(model, blobs, input, features=None, clone=True):
         h.remove()
 
     return shapes_res
+
+
+class PCA(nn.Module):
+    def __init__(self, pca_model, scaler_model=None):
+        super(PCA, self).__init__()
+        
+        if scaler_model is not None:
+            self.has_scale = True
+            self.scale = nn.Parameter(torch.from_numpy(scaler_model.scale_).type(torch.FloatTensor))
+            self.scale_mean = nn.Parameter(torch.from_numpy(scaler_model.mean_).type(torch.FloatTensor))
+        else:
+            self.has_scale = False
+        
+        if pca_model.mean_ is None:
+            self.mean = nn.Parameter(torch.zeros(1))
+        else:
+            self.mean = nn.Parameter(torch.from_numpy(pca_model.mean_).type(torch.FloatTensor))
+        self.components = nn.Parameter(torch.from_numpy(pca_model.components_).t().type(torch.FloatTensor))
+        self.whiten = pca_model.whiten
+        self.explained_variance = nn.Parameter(torch.from_numpy(pca_model.explained_variance_).type(torch.FloatTensor))
+
+        self.n_components = pca_model.n_components_
+        self.noise_variance = pca_model.noise_variance_
+        self.singular_values = torch.from_numpy(pca_model.singular_values_).type(torch.FloatTensor)
+        self.explained_variance_ratio = torch.from_numpy(pca_model.explained_variance_ratio_).type(torch.FloatTensor)
+    
+    def forward(self, x):
+        if self.has_scale:
+            x = x - self.scale_mean
+            x = x / self.scale
+        
+        if self.mean is not None:
+            x = x - self.mean
+        
+        x_transformed = torch.mm(x, self.components)
+        
+        if self.whiten:
+            x_transformed = x_transformed / torch.sqrt(self.explained_variance)            
+        
+        return x_transformed
+
+
+def load_pca_transform(pca_model_path, scaler_model_path=None):
+    pca_model = joblib.load(pca_model_path) 
+    if scaler_model_path is None:
+        scaler_model = None
+    else:
+        scaler_model = joblib.load(scaler_model_path)
+    return PCA(pca_model=pca_model, scaler_model=scaler_model)
 
 
 def get_data_loader(dataset, **kwargs):

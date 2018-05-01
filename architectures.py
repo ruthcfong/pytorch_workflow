@@ -24,7 +24,7 @@ class MnistNet(nn.Module):
 
 
 class LeNet(nn.Module):
-    def __init__(self, in_channels=1, out_channels=10, adaptive_pool=False, sigmoid=False):
+    def __init__(self, in_channels=1, out_channels=10, adaptive_pool=False, activation=True, sigmoid=False):
         super(LeNet, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, 20, kernel_size=5)
         self.relu1 = nn.ReLU(inplace=True)
@@ -38,6 +38,7 @@ class LeNet(nn.Module):
         self.fc1 = nn.Linear(4*4*50, 500)
         self.relu3 = nn.ReLU(inplace=True)
         self.fc2 = nn.Linear(500, out_channels)
+        self.activation = activation 
         if sigmoid:
             self.sigmoid = nn.Sigmoid()
 
@@ -47,10 +48,13 @@ class LeNet(nn.Module):
         x = x.view(-1, 4*4*50)
         x = self.relu3(self.fc1(x))
         x = self.fc2(x) 
-        if hasattr(self, 'sigmoid'):
-            return self.sigmoid(x)
+        if self.activation:
+            if hasattr(self, 'sigmoid'):
+                return self.sigmoid(x)
+            else:
+                return F.log_softmax(x, dim=1)
         else:
-            return F.log_softmax(x, dim=1)
+            return x
 
 
 class AlexNetCustom(AlexNet):
