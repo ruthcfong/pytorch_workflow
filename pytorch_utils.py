@@ -106,12 +106,15 @@ class ContrastiveLoss(torch.nn.Module):
     Based on: http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
     """
 
-    def __init__(self, margin=2.0):
+    def __init__(self, margin=2.0, normalize=True):
         super(ContrastiveLoss, self).__init__()
-        self.margin = margin
+        self.margin=margin
+        self.normalize=True
 
     def forward(self, output1, output2, label):
         euclidean_distance = F.pairwise_distance(output1, output2)
+        if self.normalize:
+            euclidean_distance = 1 / float(np.prod(output1.shape[1])) * euclidean_distance
         loss_contrastive = torch.mean((1-label) * torch.pow(euclidean_distance, 2) +
                                       (label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2))
 
@@ -485,6 +488,34 @@ def get_first_module_name(module, running_name=''):
         return get_first_module_name(module._modules[next_module_name],
                 running_name=running_name)
     return running_name
+
+
+def replace_max_with_avg_pool(parent_module):
+    if isinstance(parent_module, nn.Sequential):
+        module_dict = OrderedDict()
+    elif isinstance(parent_module, nn.Module):
+        new_parent_module = copy.deepcopy(parent_module)
+    else:
+        assert(False)
+    for (k, v) in parent_module._modules.items():
+        if isinstance(v, nn.MaxPool2d):
+            assert(v.dilation == 1)
+            child_module = nn.AvgPool2d(kernel_size=v.kernel_size, stride=v.stride, padding=v.padding, 
+                                        ceil_mode=v.ceil_mode)
+        elif len(v._modules.items()) > 0:
+            child_module = replace_max_with_avg_pool(v)
+        else:
+            child_module = v
+        
+        if isinstance(parent_module, nn.Sequential):
+            module_dict[k] = child_module
+        elif isinstance(parent_module, nn.Module):
+            setattr(new_parent_module, k, child_module)
+    
+    if isinstance(parent_module, nn.Sequential):
+        return nn.Sequential(module_dict)
+    elif isinstance(parent_module, nn.Module):
+        return new_parent_module
 
 
 activations = []
