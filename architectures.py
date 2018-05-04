@@ -104,3 +104,66 @@ def alexnet_custom(pretrained=False, **kwargs):
                 state_dict[k] = pretrained_state_dict[k]
         model.load_state_dict(state_dict)
     return model
+
+
+from torchvision.models import AlexNet, alexnet
+
+class TruncatedAlexNet(AlexNet):
+    def __init__(self, module_name):
+        super(TruncatedAlexNet, self).__init__()
+        
+        parent_module, module_index = module_name.split('.')
+        assert(parent_module in ['features', 'classifier'])
+        module_index = int(module_index)
+
+        features = [
+            nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=2),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2),
+            nn.Conv2d(64, 192, kernel_size=5, padding=2),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2),
+            nn.Conv2d(192, 384, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(384, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2)
+        ]
+        
+        if parent_module == 'features':
+            self.features = nn.Sequential(*features[:module_index+1])
+            self.classifier = None
+        else:
+            self.features = features
+            classifier = [
+                nn.Dropout(),
+                nn.Linear(256 * 6 * 6, 4096),
+                nn.ReLU(inplace=True),
+                nn.Dropout(),
+                nn.Linear(4096, 4096),
+                nn.ReLU(inplace=True),
+                nn.Linear(4096, 1000),
+            ]
+            self.classifier = nn.Sequential(*classifier[:module_index+1])
+
+    def forward(self, x):
+        x = self.features(x)
+        if self.classifier is None:
+            return x
+        x = x.view(x.shape[0], -1)
+        x = self.classifier(x)
+        return x
+    
+def truncated_alexnet(pretrained=False, module_name='classifier.6'):
+    model = TruncatedAlexNet(module_name)
+    if pretrained:
+        pretrained_model = alexnet(pretrained=True)
+        state_dict = model.state_dict()
+        pretrained_state_dict = pretrained_model.state_dict()
+        for k in pretrained_state_dict.keys():
+            if k in state_dict.keys() and state_dict[k].shape == pretrained_state_dict[k].shape:
+                state_dict[k] = pretrained_state_dict[k]
+        model.load_state_dict(state_dict)
+    return model
