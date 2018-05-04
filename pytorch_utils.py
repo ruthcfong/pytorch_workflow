@@ -17,7 +17,7 @@ import copy
 
 from PIL import Image 
 
-from architectures import LeNet, MnistNet, AlexNetCustom, alexnet_custom
+from architectures import LeNet, MnistNet, AlexNetCustom, alexnet_custom, TruncatedAlexNet, truncated_alexnet
 
 #import matplotlib.pyplot as plt
 
@@ -333,13 +333,16 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
         import models.cifar as cifar_models
 
         # architectures for which I have pretrained CIFAR-10/CIFAR-100 models
-        CIFAR_ARCHS = ('alexnet_custom', 'lenet', 'alexnet', 'densenet', 'preresnet-110', 'resnet-110', 'vgg19_bn')
+        CIFAR_ARCHS = ('truncated_alexnet', 'alexnet_custom', 'lenet', 'alexnet', 'densenet', 'preresnet-110', 'resnet-110', 'vgg19_bn')
 
         if arch not in CIFAR_ARCHS:
             raise ValueError('Architecture "{}" for {} not found. Valid architectures are: {}'.format(
                              arch, dataset, ', '.join(CIFAR_ARCHS)))
         if arch == 'alexnet_custom':
             model = alexnet_custom(pretrained=pretrained, **kwargs)
+        elif arch == 'truncated_alexnet':
+            module_name = kwargs['module_name']
+            model = cifar_models.__dict__[arch](module_name, pretrained=pretrained, dataset=dataset)
         elif arch == 'lenet':
             model = LeNet(in_channels=3, adaptive_pool=adaptive_pool)
             assert(pretrained is False or checkpoint_path is not None)
@@ -349,6 +352,13 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
     else:
         if arch == 'alexnet_custom':
             model = alexnet_custom(pretrained=pretrained, **kwargs)
+        elif arch == 'truncated_alexnet':
+            module_name = kwargs['module_name']
+            if 'num_classes' in kwargs:
+                num_classes = kwargs['num_classes']
+            else:
+                num_classes = 1000
+            model = truncated_alexnet(module_name, pretrained=pretrained, num_classes=num_classes)
         else:
             model = models.__dict__[arch](pretrained=pretrained)
             if adaptive_pool:

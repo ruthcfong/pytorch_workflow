@@ -106,11 +106,9 @@ def alexnet_custom(pretrained=False, **kwargs):
     return model
 
 
-from torchvision.models import AlexNet, alexnet
-
 class TruncatedAlexNet(AlexNet):
-    def __init__(self, module_name):
-        super(TruncatedAlexNet, self).__init__()
+    def __init__(self, module_name, num_classes=1000):
+        super(TruncatedAlexNet, self).__init__(num_classes=num_classes)
         
         parent_module, module_index = module_name.split('.')
         assert(parent_module in ['features', 'classifier'])
@@ -156,10 +154,10 @@ class TruncatedAlexNet(AlexNet):
         x = self.classifier(x)
         return x
     
-def truncated_alexnet(pretrained=False, module_name='classifier.6'):
-    model = TruncatedAlexNet(module_name)
+def truncated_alexnet(module_name, pretrained=False, **kwargs):
+    model = TruncatedAlexNet(module_name, **kwargs)
     if pretrained:
-        pretrained_model = alexnet(pretrained=True)
+        pretrained_model = alexnet(pretrained=True, **kwargs)
         state_dict = model.state_dict()
         pretrained_state_dict = pretrained_model.state_dict()
         for k in pretrained_state_dict.keys():
