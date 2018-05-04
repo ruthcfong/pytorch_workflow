@@ -445,18 +445,27 @@ def replace_module(parent_module, module_path, replacement_module):
 
 
 def truncate_module(parent_module, module_path):
+    trunc_module, _ = truncate_module_helper(parent_module, module_path)
+    return trunc_module
+
+
+def truncate_module_helper(parent_module, module_path):
     if isinstance(parent_module, nn.Sequential):
         module_dict = OrderedDict()
     elif isinstance(parent_module, nn.Module):
         new_parent_module = copy.deepcopy(parent_module)
     seen_module = False
     for (k, v) in parent_module._modules.items():
+        if seen_module and isinstance(parent_module, nn.Module):
+            delattr(new_parent_module, v)
+            continue
+
         if k == module_path[0]:
             if len(module_path) == 1:
                 child_module = v 
                 seen_module = True
             else:
-                child_module = truncate_module(v, module_path[1:])
+                (child_module, seen_module) = truncate_module_helper(v, module_path[1:])
         else:
             child_module = v
 
@@ -467,13 +476,13 @@ def truncate_module(parent_module, module_path):
         else:
             assert(False)
 
-        if seen_module:
+        if seen_module and isinstance(parent_module, nn.Sequential):
             break
 
     if isinstance(parent_module, nn.Sequential):
-        return nn.Sequential(module_dict)
+        return (nn.Sequential(module_dict), seen_module)
     elif isinstance(parent_module, nn.Module):
-        return new_parent_module
+        return (new_parent_module, seen_module)
     else:
         assert(False)
 
