@@ -17,7 +17,7 @@ import copy
 
 from PIL import Image 
 
-from architectures import LeNet, MnistNet, AlexNetCustom, alexnet_custom, TruncatedAlexNet, truncated_alexnet
+from architectures import LeNet, LeNet5, MnistNet, AlexNetCustom, alexnet_custom, TruncatedAlexNet, truncated_alexnet
 
 #import matplotlib.pyplot as plt
 
@@ -298,10 +298,12 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
         A Pytorch model.
     """
     if dataset == 'mnist' or dataset == 'svhn':
-        in_channels = 1 if dataset == 'mnist' else 3
-        if arch == 'lenet':
-            if 'in_channels' in kwargs:
-                in_channels = kwargs['in_channels']
+        if 'in_channels' in kwargs:
+            in_channels = kwargs['in_channels']
+        else:
+            in_channels = 1 if dataset == 'mnist' else 3
+        num_classes = 10 if 'num_classes' not in kwargs else kwargs['num_classes'] 
+        if arch == 'lenet' or arch == 'lenet5':
             if 'activation' in kwargs:
                 activation = kwargs['activation']
             else:
@@ -310,22 +312,38 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
                 out_channels = kwargs['num_classes']
             else:
                 out_channels = 10
-            model = LeNet(in_channels=in_channels, out_channels=out_channels, 
-                          activation=activation, adaptive_pool=adaptive_pool)
-            model_path = os.path.join(BASE_REPO_PATH, 'models', 'lenet_model.pth.tar')
-            assert(os.path.exists(model_path))
-            if pretrained and checkpoint_path is None:
-                assert(dataset == 'mnist')
-                # load checkpoint originally trained using a GPU into the CPU
-                # (see https://discuss.pytorch.org/t/on-a-cpu-device-how-to-load-checkpoint-saved-on-gpu-device/349/3)
-                checkpoint = torch.load(model_path, 
-                        map_location=lambda storage, loc: storage)
-                model.load_state_dict(checkpoint['model'])
+            if 'features_size' in kwargs:
+                features_size = kwargs['features_size']
+            else:
+                features_size = 5
+            if 'lenet':
+                model = LeNet(in_channels=in_channels, out_channels=out_channels, 
+                              features_size=features_size, activation=activation, adaptive_pool=adaptive_pool)
+                model_path = os.path.join(BASE_REPO_PATH, 'models', 'lenet_model.pth.tar')
+                assert(os.path.exists(model_path))
+                if pretrained and checkpoint_path is None:
+                    assert(dataset == 'mnist')
+                    assert(features_size == 4)
+                    # load checkpoint originally trained using a GPU into the CPU
+                    # (see https://discuss.pytorch.org/t/on-a-cpu-device-how-to-load-checkpoint-saved-on-gpu-device/349/3)
+                    checkpoint = torch.load(model_path, 
+                            map_location=lambda storage, loc: storage)
+                    model.load_state_dict(checkpoint['model'])
+            else:
+                model = LeNet5(in_channels=in_channels, out_channels=out_channels, 
+                              features_size=features_size, activation=activation, adaptive_pool=adaptive_pool)
+                assert(pretrained is False or checkpoint_path is not None)
         elif arch == 'mnistnet':
             model = MnistNet(in_channels=in_channels)
-            assert(not pretrained)
+            assert(pretrained is False or checkpoint_path is not None)
         elif arch == 'alexnet_custom':
             model = alexnet_custom(pretrained=pretrained, **kwargs)
+        elif arch == 'alexnet':
+            # requires pytorch-classification
+            import models.cifar as cifar_models
+            assert(pretrained is False or checkpoint is not None)
+            model = cifar_models.alexnet(pretrained=pretrained, dataset='cifar10', 
+                                         in_channels=in_channels, num_classes=num_classes) 
         else:
             raise NotImplementedError
     elif dataset == 'cifar10' or dataset == 'cifar100':
@@ -333,7 +351,7 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
         import models.cifar as cifar_models
 
         # architectures for which I have pretrained CIFAR-10/CIFAR-100 models
-        CIFAR_ARCHS = ('truncated_alexnet', 'alexnet_custom', 'lenet', 'alexnet', 'densenet', 'preresnet-110', 'resnet-110', 'vgg19_bn')
+        CIFAR_ARCHS = ('lenet', 'lenet5', 'truncated_alexnet', 'alexnet_custom', 'lenet', 'alexnet', 'densenet', 'preresnet-110', 'resnet-110', 'vgg19_bn')
 
         if arch not in CIFAR_ARCHS:
             raise ValueError('Architecture "{}" for {} not found. Valid architectures are: {}'.format(
@@ -343,8 +361,20 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
         elif arch == 'truncated_alexnet':
             module_name = kwargs['module_name']
             model = cifar_models.__dict__[arch](module_name, pretrained=pretrained, dataset=dataset)
-        elif arch == 'lenet':
-            model = LeNet(in_channels=3, adaptive_pool=adaptive_pool)
+        elif arch == 'lenet' or arch == 'lenet5':
+            in_channels = 3 if 'in_channels' not in kwargs else kwargs['in_channels']
+            activation = True if 'activation' not in kwargs else kwargs['activation']
+            if 'num_classes' in kwargs:
+                out_channels = kwargs['num_classes']
+            else:
+                out_channels = 10 if dataset == 'cifar10' else 100
+            features_size = 5 if 'features_size' not in kwargs else kwargs['features_size']
+            if arch == 'lenet':
+                model = LeNet(in_channels=in_channels, out_channels=out_channels, 
+                              features_size=features_size, activation=activation, adaptive_pool=adaptive_pool)
+            else:
+                model = LeNet5(in_channels=in_channels, out_channels=out_channels, 
+                              features_size=features_size, activation=activation, adaptive_pool=adaptive_pool)
             assert(pretrained is False or checkpoint_path is not None)
         else:
             model = cifar_models.__dict__[arch](pretrained=pretrained, dataset=dataset) 
@@ -507,6 +537,33 @@ def get_first_module_name(module, running_name=''):
         return get_first_module_name(module._modules[next_module_name],
                 running_name=running_name)
     return running_name
+
+
+def replace_relu_with_leaky(parent_module, negative_slope=0.01):
+    if isinstance(parent_module, nn.Sequential):
+        module_dict = OrderedDict()
+    elif isinstance(parent_module, nn.Module):
+        new_parent_module = copy.deepcopy(parent_module)
+    else:
+        assert(False)
+    for (k, v) in parent_module._modules.items():
+        print v
+        if isinstance(v, nn.ReLU):
+            child_module = nn.LeakyReLU(negative_slope=negative_slope, inplace=v.inplace)
+        elif len(v._modules.items()) > 0:
+            child_module = replace_relu_with_leaky(v, negative_slope=negative_slope)
+        else:
+            child_module = v
+        
+        if isinstance(parent_module, nn.Sequential):
+            module_dict[k] = child_module
+        elif isinstance(parent_module, nn.Module):
+            setattr(new_parent_module, k, child_module)
+    
+    if isinstance(parent_module, nn.Sequential):
+        return nn.Sequential(module_dict)
+    elif isinstance(parent_module, nn.Module):
+        return new_parent_module
 
 
 def replace_max_with_avg_pool(parent_module):
