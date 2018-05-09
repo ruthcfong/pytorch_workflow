@@ -316,12 +316,12 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
                 features_size = kwargs['features_size']
             else:
                 features_size = 5
-            if 'lenet':
+            if arch == 'lenet':
                 model = LeNet(in_channels=in_channels, out_channels=out_channels, 
                               features_size=features_size, activation=activation, adaptive_pool=adaptive_pool)
+                if pretrained and checkpoint_path is None:
                 model_path = os.path.join(BASE_REPO_PATH, 'models', 'lenet_model.pth.tar')
                 assert(os.path.exists(model_path))
-                if pretrained and checkpoint_path is None:
                     assert(dataset == 'mnist')
                     assert(features_size == 4)
                     # load checkpoint originally trained using a GPU into the CPU
