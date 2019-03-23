@@ -169,8 +169,12 @@ def get_cifar10_class_name(label_i):
     return CIFAR10_CLASSES[label_i]
 
 
+def get_default_label_names(repo_path=BASE_REPO_PATH):
+    return np.loadtxt(os.path.join(repo_path, 'synset_words.txt'), str, delimiter='\t')
+
+
 def get_short_imagenet_name(label_i, 
-        label_names=np.loadtxt(os.path.join(BASE_REPO_PATH, 'synset_words.txt'), str, delimiter='\t')):
+        label_names):
     """Return the shortened name for an ImageNet index (zero-indexed).
     
     Args:
@@ -293,7 +297,7 @@ def get_detransform(mu=IMAGENET_MU, sigma=IMAGENET_SIGMA):
 
 
 def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True, 
-        checkpoint_path=None, cuda=False, **kwargs):
+              checkpoint_path=None, cuda=False, repo_path=BASE_REPO_PATH, **kwargs):
     """Returns a Pytorch model of the given architecture.
 
     TODO: Improve documentation for this function.
@@ -329,7 +333,7 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
                 model = LeNet(in_channels=in_channels, out_channels=out_channels, 
                               features_size=features_size, activation=activation, adaptive_pool=adaptive_pool)
                 if pretrained and checkpoint_path is None:
-                    model_path = os.path.join(BASE_REPO_PATH, 'models', 'lenet_model.pth.tar')
+                    model_path = os.path.join(repo_path, 'models', 'lenet_model.pth.tar')
                     assert(os.path.exists(model_path))
                     assert(dataset == 'mnist')
                     assert(features_size == 4)
