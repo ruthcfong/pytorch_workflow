@@ -213,6 +213,12 @@ def pil_loader(path):
         return img.convert('RGB')
 
 
+def get_device():
+    """Return torch.device based on if cuda is available."""
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    return device
+
+
 def get_input_size(arch):
     if arch == 'alexnet':
         return 227
