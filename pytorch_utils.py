@@ -209,7 +209,16 @@ def pil_loader(path):
         return img.convert('RGB')
 
 
-def get_input_size(dataset='imagenet', arch='alexnet'):
+def get_input_size(arch):
+    if arch == 'alexnet':
+        return 227
+    elif arch == 'inception_v3':
+        return 299
+    else:
+        return 224
+
+
+def get_input_shape(dataset='imagenet', arch='alexnet'):
     if dataset == 'imagenet':
         if arch == 'alexnet':
             return [1,3,227,227]
