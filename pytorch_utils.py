@@ -567,7 +567,7 @@ def replace_relu_with_leaky(parent_module, negative_slope=0.01):
     else:
         assert(False)
     for (k, v) in parent_module._modules.items():
-        print v
+        print(v)
         if isinstance(v, nn.ReLU):
             child_module = nn.LeakyReLU(negative_slope=negative_slope, inplace=v.inplace)
         elif len(v._modules.items()) > 0:
