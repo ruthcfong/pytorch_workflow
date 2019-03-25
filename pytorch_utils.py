@@ -361,7 +361,7 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
             # requires pytorch-classification
             import models.cifar as cifar_models
             assert(pretrained is False or checkpoint_path is not None)
-            print in_channels
+            print(in_channels)
             model = cifar_models.alexnet(pretrained=pretrained, dataset='cifar10', 
                                          in_channels=in_channels, num_classes=num_classes) 
         else:
