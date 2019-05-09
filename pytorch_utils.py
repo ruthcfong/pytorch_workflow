@@ -898,3 +898,44 @@ def show_image(img, title='', hide_ticks=True):
         ax.set_xticks([])
         ax.set_yticks([])
     plt.show()
+
+
+## Functions for area penalty.
+
+
+def create_batch_spatial_area_target(spatial_shape, area):
+    """Create target label for a batch."""
+    assert len(spatial_shape) == 2
+    size = np.prod(spatial_shape)
+    target = torch.ones(size)
+    if area >= 1:
+        target[:int(size-area)] = 0
+    else:
+        target[:int(size * (1 - area))] = 0
+    return target
+
+
+def batch_spatial_area_norm(tensor, target):
+    assert len(tensor.shape) == 4
+    assert len(target) == np.prod(tensor.shape[2:])
+    sorted_x, _ = torch.reshape(tensor,
+                                (tensor.shape[0], tensor.shape[1], len(target))
+                                ).sort()
+    return ((sorted_x - target.expand_as(sorted_x))**2).mean()
+
+
+def create_area_target(mask, area):
+    """Create target label for area norm loss."""
+    size = mask.numel()
+    target = torch.ones(size)
+    if area >= 1:
+        target[:int(size-area)] = 0
+    else:
+        target[:int(size * (1-area))] = 0
+    return target
+
+
+def area_norm(tensor, target):
+    """Compute area norm."""
+    sorted_x, _ = tensor.reshape(-1).sort()
+    return ((sorted_x - target)**2).mean()
