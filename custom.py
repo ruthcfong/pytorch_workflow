@@ -1,4 +1,6 @@
-BASE_REPO_PATH="/home/ruthfong/pytorch-workflow"
+import os
+
+BASE_REPO_PATH=os.path.dirname(os.path.abspath(__file__))
 MNIST_DATA_DIR="/data/datasets/mnist"
 CIFAR10_DATA_DIR="/data/datasets/cifar10"
 CIFAR100_DATA_DIR="/data/datasets/cifar100"
