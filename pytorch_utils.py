@@ -15,7 +15,7 @@ from sklearn.externals import joblib
 
 import copy
 
-from PIL import Image 
+from PIL import Image
 
 from .architectures import LeNet, LeNet5, MnistNet, AlexNetCustom, alexnet_custom, TruncatedAlexNet, truncated_alexnet
 
@@ -23,7 +23,7 @@ from .architectures import LeNet, LeNet5, MnistNet, AlexNetCustom, alexnet_custo
 
 import warnings
 
-from collections import OrderedDict 
+from collections import OrderedDict
 
 from .custom import *
 
@@ -79,7 +79,7 @@ class DiversityLoss(nn.Module):
 
     def forward(self, input):
         if self.use_gram:
-            mats = [self.gm(x) for x in input] 
+            mats = [self.gm(x) for x in input]
         else:
             mats = [x.view(x.shape[0], -1) for x in input]
         res = 0
@@ -138,13 +138,29 @@ class NormalizedMSELoss(nn.Module):
         norm_target = norm_target.expand_as(target)
         loss = F.mse_loss(input / norm_input, target / norm_target, reduce=False)
         if not self.reduce:
-            return loss 
+            return loss
         else:
             if self.size_average:
                 return torch.mean(torch.sum(loss.view(loss.shape[0], -1)))
             else:
                 return torch.sum(norm_loss)
-        
+
+
+class NormalizeInverse(transforms.Normalize):
+    """
+    Undoes the normalization and returns the reconstructed images in the input domain.
+    """
+
+    def __init__(self, mean, std):
+        mean = torch.as_tensor(mean)
+        std = torch.as_tensor(std)
+        std_inv = 1 / (std + 1e-7)
+        mean_inv = -mean * std_inv
+        super(NormalizeInverse, self).__init__(mean=mean_inv, std=std_inv)
+
+    def __call__(self, tensor):
+        return super(NormalizeInverse, self).__call__(tensor.clone())
+
 
 class Clip(object):
     """Pytorch transformation that clips a tensor to be within [0,1]"""
@@ -173,13 +189,12 @@ def get_default_label_names(repo_path=BASE_REPO_PATH):
     return np.loadtxt(os.path.join(repo_path, 'synset_words.txt'), str, delimiter='\t')
 
 
-def get_short_imagenet_name(label_i, 
-        label_names):
+def get_short_imagenet_name(label_i, label_names=get_default_label_names()):
     """Return the shortened name for an ImageNet index (zero-indexed).
-    
+
     Args:
         label_i (int): index of ImageNet class (zero-index, [0, 999])
-    
+
     Returns:
         str: short name of the given ImageNet class
     """
@@ -247,7 +262,7 @@ def get_input_shape(dataset='imagenet', arch='alexnet'):
 
 def get_transform_detransform(dataset='imagenet', size=224, train=False):
     if dataset == 'mnist':
-        return (transforms.Compose([transforms.Grayscale(), transforms.ToTensor()]), 
+        return (transforms.Compose([transforms.Grayscale(), transforms.ToTensor()]),
                 transforms.Compose([transforms.ToPILImage()]))
                 #transforms.Compose([Clip(), transforms.ToPILImage()]))
     elif dataset == 'cifar10' or dataset == 'cifar100':
@@ -267,7 +282,7 @@ def get_transform_detransform(dataset='imagenet', size=224, train=False):
         detransform = get_detransform(mu=CIFAR_MU, sigma=CIFAR_SIGMA)
         return (transform, detransform)
     elif dataset == 'imagenet':
-        transform = get_transform(size=size, mu=IMAGENET_MU, 
+        transform = get_transform(size=size, mu=IMAGENET_MU,
                 sigma=IMAGENET_SIGMA, train=train)
         detransform = get_detransform(mu=IMAGENET_MU, sigma=IMAGENET_SIGMA)
         return (transform, detransform)
@@ -295,14 +310,14 @@ def get_transform(size=224, mu=IMAGENET_MU, sigma=IMAGENET_SIGMA, train=False):
 
 def get_detransform(mu=IMAGENET_MU, sigma=IMAGENET_SIGMA):
     detransform = transforms.Compose([
-        transforms.Normalize([-1*x for x in mu], [1./x for x in sigma]),
+        NormalizeInverse(mu, sigma),
         Clip(),
         transforms.ToPILImage(),
     ])
     return detransform
 
 
-def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True, 
+def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
               checkpoint_path=None, cuda=False, repo_path=BASE_REPO_PATH, **kwargs):
     """Returns a Pytorch model of the given architecture.
 
@@ -321,13 +336,13 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
             in_channels = kwargs['in_channels']
         else:
             in_channels = 1 if dataset == 'mnist' else 3
-        num_classes = 10 if 'num_classes' not in kwargs else kwargs['num_classes'] 
+        num_classes = 10 if 'num_classes' not in kwargs else kwargs['num_classes']
         if arch == 'lenet' or arch == 'lenet5':
             if 'activation' in kwargs:
                 activation = kwargs['activation']
             else:
                 activation = True
-            if 'num_classes' in kwargs: 
+            if 'num_classes' in kwargs:
                 out_channels = kwargs['num_classes']
             else:
                 out_channels = 10
@@ -336,7 +351,7 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
             else:
                 features_size = 5
             if arch == 'lenet':
-                model = LeNet(in_channels=in_channels, out_channels=out_channels, 
+                model = LeNet(in_channels=in_channels, out_channels=out_channels,
                               features_size=features_size, activation=activation, adaptive_pool=adaptive_pool)
                 if pretrained and checkpoint_path is None:
                     model_path = os.path.join(repo_path, 'models', 'lenet_model.pth.tar')
@@ -345,11 +360,11 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
                     assert(features_size == 4)
                     # load checkpoint originally trained using a GPU into the CPU
                     # (see https://discuss.pytorch.org/t/on-a-cpu-device-how-to-load-checkpoint-saved-on-gpu-device/349/3)
-                    checkpoint = torch.load(model_path, 
+                    checkpoint = torch.load(model_path,
                             map_location=lambda storage, loc: storage)
                     model.load_state_dict(checkpoint['model'])
             else:
-                model = LeNet5(in_channels=in_channels, out_channels=out_channels, 
+                model = LeNet5(in_channels=in_channels, out_channels=out_channels,
                               features_size=features_size, activation=activation, adaptive_pool=adaptive_pool)
                 assert(pretrained is False or checkpoint_path is not None)
         elif arch == 'mnistnet':
@@ -362,8 +377,8 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
             import models.cifar as cifar_models
             assert(pretrained is False or checkpoint_path is not None)
             print(in_channels)
-            model = cifar_models.alexnet(pretrained=pretrained, dataset='cifar10', 
-                                         in_channels=in_channels, num_classes=num_classes) 
+            model = cifar_models.alexnet(pretrained=pretrained, dataset='cifar10',
+                                         in_channels=in_channels, num_classes=num_classes)
         else:
             raise NotImplementedError
     elif dataset == 'cifar10' or dataset == 'cifar100':
@@ -390,14 +405,14 @@ def get_model(arch, dataset='imagenet', adaptive_pool=False, pretrained=True,
                 out_channels = 10 if dataset == 'cifar10' else 100
             features_size = 5 if 'features_size' not in kwargs else kwargs['features_size']
             if arch == 'lenet':
-                model = LeNet(in_channels=in_channels, out_channels=out_channels, 
+                model = LeNet(in_channels=in_channels, out_channels=out_channels,
                               features_size=features_size, activation=activation, adaptive_pool=adaptive_pool)
             else:
-                model = LeNet5(in_channels=in_channels, out_channels=out_channels, 
+                model = LeNet5(in_channels=in_channels, out_channels=out_channels,
                               features_size=features_size, activation=activation, adaptive_pool=adaptive_pool)
             assert(pretrained is False or checkpoint_path is not None)
         else:
-            model = cifar_models.__dict__[arch](pretrained=pretrained, dataset=dataset) 
+            model = cifar_models.__dict__[arch](pretrained=pretrained, dataset=dataset)
     #elif dataset == 'imagenet':
     else:
         if arch == 'alexnet_custom':
@@ -442,7 +457,7 @@ def get_num_params(model):
 
     Args:
         model: A Pytorch model.
-    
+
     Return:
         int: number of parameters in the given Pytorch model.
     """
@@ -522,7 +537,7 @@ def truncate_module_helper(parent_module, module_path):
 
         if k == module_path[0]:
             if len(module_path) == 1:
-                child_module = v 
+                child_module = v
                 seen_module = True
             else:
                 (child_module, seen_module) = truncate_module_helper(v, module_path[1:])
@@ -574,12 +589,12 @@ def replace_relu_with_leaky(parent_module, negative_slope=0.01):
             child_module = replace_relu_with_leaky(v, negative_slope=negative_slope)
         else:
             child_module = v
-        
+
         if isinstance(parent_module, nn.Sequential):
             module_dict[k] = child_module
         elif isinstance(parent_module, nn.Module):
             setattr(new_parent_module, k, child_module)
-    
+
     if isinstance(parent_module, nn.Sequential):
         return nn.Sequential(module_dict)
     elif isinstance(parent_module, nn.Module):
@@ -596,18 +611,18 @@ def replace_max_with_avg_pool(parent_module):
     for (k, v) in parent_module._modules.items():
         if isinstance(v, nn.MaxPool2d):
             assert(v.dilation == 1)
-            child_module = nn.AvgPool2d(kernel_size=v.kernel_size, stride=v.stride, padding=v.padding, 
+            child_module = nn.AvgPool2d(kernel_size=v.kernel_size, stride=v.stride, padding=v.padding,
                                         ceil_mode=v.ceil_mode)
         elif len(v._modules.items()) > 0:
             child_module = replace_max_with_avg_pool(v)
         else:
             child_module = v
-        
+
         if isinstance(parent_module, nn.Sequential):
             module_dict[k] = child_module
         elif isinstance(parent_module, nn.Module):
             setattr(new_parent_module, k, child_module)
-    
+
     if isinstance(parent_module, nn.Sequential):
         return nn.Sequential(module_dict)
     elif isinstance(parent_module, nn.Module):
@@ -741,14 +756,14 @@ def hook_get_shapes(model, blobs, input, features=None, clone=True):
 class PCA(nn.Module):
     def __init__(self, pca_model, scaler_model=None):
         super(PCA, self).__init__()
-        
+
         if scaler_model is not None:
             self.has_scale = True
             self.scale = nn.Parameter(torch.from_numpy(scaler_model.scale_).type(torch.FloatTensor))
             self.scale_mean = nn.Parameter(torch.from_numpy(scaler_model.mean_).type(torch.FloatTensor))
         else:
             self.has_scale = False
-        
+
         if pca_model.mean_ is None:
             self.mean = nn.Parameter(torch.zeros(1))
         else:
@@ -761,25 +776,25 @@ class PCA(nn.Module):
         self.noise_variance = pca_model.noise_variance_
         self.singular_values = torch.from_numpy(pca_model.singular_values_).type(torch.FloatTensor)
         self.explained_variance_ratio = torch.from_numpy(pca_model.explained_variance_ratio_).type(torch.FloatTensor)
-    
+
     def forward(self, x):
         if self.has_scale:
             x = x - self.scale_mean
             x = x / self.scale
-        
+
         if self.mean is not None:
             x = x - self.mean
-        
+
         x_transformed = torch.mm(x, self.components)
-        
+
         if self.whiten:
-            x_transformed = x_transformed / torch.sqrt(self.explained_variance)            
-        
+            x_transformed = x_transformed / torch.sqrt(self.explained_variance)
+
         return x_transformed
 
 
 def load_pca_transform(pca_model_path, scaler_model_path=None):
-    pca_model = joblib.load(pca_model_path) 
+    pca_model = joblib.load(pca_model_path)
     if scaler_model_path is None:
         scaler_model = None
     else:
@@ -801,7 +816,7 @@ def get_data_loader(dataset, **kwargs):
 def get_cifar10_data_loader(datadir=CIFAR10_DATA_DIR, train=True, batch_size=64,
                             shuffle=False, cuda=False):
     transform, _ = get_transform_detransform(dataset='cifar10', size=32)
-    dataset = datasets.CIFAR10(datadir, train=train, 
+    dataset = datasets.CIFAR10(datadir, train=train,
                                download=not os.path.exists(datadir),
                                transform=transform)
     kwargs = {'num_workers': 1, 'pin_memory': True} if cuda else {}
@@ -811,23 +826,23 @@ def get_cifar10_data_loader(datadir=CIFAR10_DATA_DIR, train=True, batch_size=64,
 def get_cifar100_data_loader(datadir=CIFAR100_DATA_DIR, train=True, batch_size=64,
                             shuffle=False, cuda=False):
     transform, _ = get_transform_detransform(dataset='cifar100', size=32)
-    dataset = datasets.CIFAR10(datadir, train=train, 
+    dataset = datasets.CIFAR10(datadir, train=train,
                                download=not os.path.exists(datadir),
                                transform=transform)
     kwargs = {'num_workers': 1, 'pin_memory': True} if cuda else {}
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, **kwargs)
 
 
-def get_mnist_data_loader(datadir=MNIST_DATA_DIR, train=True, batch_size=64, 
+def get_mnist_data_loader(datadir=MNIST_DATA_DIR, train=True, batch_size=64,
                           shuffle=False, normalize=False, cuda=False):
     if normalize:
-        transform = transforms.Compose([transforms.ToTensor(), 
+        transform = transforms.Compose([transforms.ToTensor(),
                                         transforms.Normalize((0.1307,), (0.3081,))
                                        ])
     else:
         transform = transforms.Compose([transforms.ToTensor()])
     dataset = datasets.MNIST(datadir, train=train,
-        download=not os.path.exists(datadir), 
+        download=not os.path.exists(datadir),
         transform=transform)
     kwargs = {'num_workers': 1, 'pin_memory': True} if cuda else {}
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, **kwargs)
