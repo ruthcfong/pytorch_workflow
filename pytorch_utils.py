@@ -230,6 +230,17 @@ class MedianPool2d(nn.Module):
         return x
 
 
+def str2bool(v):
+    """Helper function for accepting command-line boolean arguments"""
+    v = v.lower()
+    if v in ('yes', 'true', 't', '1'):
+        return True
+    elif v in ('no', 'false', 'f', '0'):
+        return False
+    raise ValueError('Boolean argument needs to be true or false. '
+                     'Instead, it is %s.' % v)
+
+
 def get_cifar10_class_name(label_i):
     return CIFAR10_CLASSES[label_i]
 
