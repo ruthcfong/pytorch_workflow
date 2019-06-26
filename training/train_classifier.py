@@ -401,7 +401,7 @@ def main_worker(gpu, ngpus_per_node, logger, args):
                 transforms.ToTensor(),
                 normalize,
             ]),
-            target_transform=custom_transforms.VOCToClassVector
+            target_transform=custom_transforms.VOCToClassVector()
         )
 
         val_dataset = datasets.VOCDetection(
@@ -415,7 +415,7 @@ def main_worker(gpu, ngpus_per_node, logger, args):
                 transforms.ToTensor(),
                 normalize,
             ]),
-            target_transform=custom_transforms.VOCToClassVector
+            target_transform=custom_transforms.VOCToClassVector()
         )
     else:
         raise NotImplementedError("{} dataset not supported; only {}.".format(
