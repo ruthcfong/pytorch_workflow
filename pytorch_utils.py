@@ -27,7 +27,7 @@ import warnings
 
 from collections import OrderedDict
 
-from .custom import *
+from custom import *
 
 IMAGENET_MU = [0.485, 0.456, 0.406]
 IMAGENET_SIGMA = [0.229, 0.224, 0.225]
