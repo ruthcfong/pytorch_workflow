@@ -19,7 +19,7 @@ import copy
 
 from PIL import Image
 
-from .architectures import LeNet, LeNet5, MnistNet, AlexNetCustom, alexnet_custom, TruncatedAlexNet, truncated_alexnet
+from architectures import LeNet, LeNet5, MnistNet, AlexNetCustom, alexnet_custom, TruncatedAlexNet, truncated_alexnet
 
 #import matplotlib.pyplot as plt
 
