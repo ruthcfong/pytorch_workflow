@@ -496,11 +496,23 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, args, start_
 
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
-    losses = AverageMeter('Loss', ':.4e')
-    top1 = AverageMeter('Acc@1', ':6.2f')
-    top5 = AverageMeter('Acc@5', ':6.2f')
-    progress = ProgressMeter(len(train_loader), batch_time, data_time, losses, top1,
-                             top5, prefix="Epoch: [{}]".format(epoch))
+
+    metrics = {}
+    metrics['losses'] = AverageMeter('Loss', ':.4e')
+    if args.dataset == "imagenet":
+        metrics['acc1'] = AverageMeter('Acc@1', ':6.2f')
+        metrics['acc5'] = AverageMeter('Acc@5', ':6.2f')
+        progress = ProgressMeter(len(train_loader), batch_time, data_time,
+                                 metrics['losses'], metrics['acc1'],
+                                 metrics['acc5'],
+                                 prefix="Epoch: [{}]".format(epoch))
+    elif args.dataset == "pascal":
+        metrics=['acc'] = AverageMeter('Acc', ':6.2f')
+        progress = ProgressMeter(len(train_loader), batch_time, data_time,
+                                 metrics['losses'], metrics['acc'],
+                                 prefix="Epoch: [{}]".format(epoch))
+    else:
+        assert False
 
     # switch to train mode
     model.train()
@@ -533,10 +545,16 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, args, start_
         loss = criterion(output, target)
 
         # measure accuracy and record loss
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
-        losses.update(loss.item(), images.size(0))
-        top1.update(acc1[0], images.size(0))
-        top5.update(acc5[0], images.size(0))
+        if args.dataset == "imagenet":
+            acc1, acc5 = accuracy(output, target, topk=(1, 5))
+            metrics['acc1'].update(acc1[0], images.size(0))
+            metrics['acc5'].update(acc5[0], images.size(0))
+        elif args.dataset == "pascal":
+            acc = binary_accuracy(output, target)
+            metrics['acc'].update(acc[0], images.size(0))
+        else:
+            assert False
+        metrics['losses'].update(loss.item(), images.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -702,6 +720,13 @@ def adjust_learning_rate(optimizer, epoch, args):
     else:
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
+
+
+def binary_accuracy(output, target):
+    # TODO(ruthfong): Finish implementing.
+    assert output.shape == target.shape
+    with torch.no_grad():
+        pass
 
 
 def accuracy(output, target, topk=(1,)):
