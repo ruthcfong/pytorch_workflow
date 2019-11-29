@@ -1,9 +1,10 @@
 #!/bin/bash
-LSUN_PYTHON_DIR=/home/ruthfong/lsun
-DOWNLOAD_DIR=/data/datasets/lsun
-mkdir -p $DOWNLOAD_DIR
-cd $LSUN_PYTHON_DIR
-python download.py -o $DOWNLOAD_DIR
+#LSUN_PYTHON_DIR=/home/ruthfong/lsun
+#DOWNLOAD_DIR=/data/datasets/lsun
+DOWNLOAD_DIR=/scratch/shared/slow/ruthfong/datasets/lsun
+#mkdir -p $DOWNLOAD_DIR
+#cd $LSUN_PYTHON_DIR
+#python download.py -o $DOWNLOAD_DIR
 cd $DOWNLOAD_DIR
 unzip bedroom_train_lmdb.zip
 unzip bedroom_val_lmdb.zip
