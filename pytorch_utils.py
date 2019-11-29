@@ -19,7 +19,9 @@ from PIL import Image
 
 from .architectures import LeNet, LeNet5, MnistNet, AlexNetCustom, alexnet_custom, TruncatedAlexNet, truncated_alexnet
 
-#import matplotlib.pyplot as plt
+import matplotlib
+# matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 import warnings
 
@@ -174,7 +176,7 @@ def get_default_label_names(repo_path=BASE_REPO_PATH):
 
 
 def get_short_imagenet_name(label_i, 
-        label_names):
+        label_names=get_default_label_names()):
     """Return the shortened name for an ImageNet index (zero-indexed).
     
     Args:
@@ -883,3 +885,16 @@ def show_image(img, title='', hide_ticks=True):
         ax.set_xticks([])
         ax.set_yticks([])
     plt.show()
+
+
+def create_dir_if_necessary(path, is_dir=False):
+    """Create directory to path if necessary."""
+    parent_dir = get_parent_dir(path) if not is_dir else path
+    if not os.path.exists(parent_dir):
+        os.makedirs(parent_dir)
+
+
+def get_parent_dir(path):
+    """Return parent directory of path."""
+    return os.path.abspath(os.path.join(path, os.pardir))
+
